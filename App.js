@@ -15,6 +15,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#2EA17A'
+    backgroundColor: '#1F3341',
+    overflow: 'hidden'
   },
 });

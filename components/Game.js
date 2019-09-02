@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, Image as Img, Dimensions, Platform } from 'react-native';
+import { Text, Image, Dimensions, Platform, View } from 'react-native';
 import { GLView } from 'expo-gl';
 import { Asset } from 'expo-asset';
 import Expo2DContext from 'expo-2d-context';
@@ -14,6 +14,11 @@ class Game extends React.Component{
 
   constructor(props) {
     super(props);
+
+    this.state = {
+      player: {},
+      computers: []
+    }
 
     this.engine = new Engine({
       map,
@@ -35,24 +40,10 @@ class Game extends React.Component{
   async loadImage(image) {
     const asset = await Asset.fromModule(image);
     await asset.downloadAsync();
-    if(isWeb){
-      const img = new Image()
-      img.src = asset.localUri;
-      return img;
-    } else{
-      return asset;
-    }
+    return asset;
   }
 
-  async onCreateContext(gl) {
-    if(this.ctx) return;
-
-    let ctx;
-    if(isWeb)
-      ctx = gl.getContext('2d');
-    else
-      ctx = new Expo2DContext(gl);
-
+  async componentDidMount() {
     let assets = await Promise.all([
       this.loadImage(require('../assets/game/car-e.png')),
       this.loadImage(require('../assets/game/car-w.png')),
@@ -64,18 +55,21 @@ class Game extends React.Component{
       this.loadImage(require('../assets/game/computer-s.png')),
     ]);
 
-    this.assets = assets;
-    this.ctx = ctx;
-
-    let width = gl.width || ctx.width,
-        height = gl.height || ctx.height;
-
-    this.setState({
-      width: width,
-      height: height,
-      yOffset: isWeb ? 0 : (height - width) / 2,
-      scale: width / 500
-    });
+    let [ carE, carW, carN, carS, computerE, computerW, computerN, computerS ] = assets;
+    this.images = {
+      red: {
+        e: carE,
+        w: carW,
+        n: carN,
+        s: carS
+      },
+      white: {
+        e: computerE,
+        w: computerW,
+        n: computerN,
+        s: computerS
+      }
+    }
 
     requestAnimationFrame(this.step.bind(this));
   }
@@ -93,100 +87,120 @@ class Game extends React.Component{
   }
 
   renderGame() {
-    let ctx = this.ctx,
-        { width, height, yOffset, scale } = this.state;
-
-    ctx.clearRect(0, 0, width, height);
-
-    let [ carE, carW, carN, carS, computerE, computerW, computerN, computerS ] = this.assets;
-
-    let images = {
-      player: {
-        e: carE,
-        w: carW,
-        n: carN,
-        s: carS
-      },
-      computer: {
-        e: computerE,
-        w: computerW,
-        n: computerN,
-        s: computerS
-      }
-    }
-
-    let renderPlayer = (player, type) => {
-      let { x, y, direction } = player.loc,
-          base = 25 * scale,
-          height = base,
-          width = base;
-
-      if(['n', 's'].includes(direction))
-        height *= 2;
-
-      else
-        width *= 2;
-
-      let selectedImg = images[type][direction];
-
-      if(direction == 'n')
-        ctx.drawImage(selectedImg, base*x - width/2, yOffset + base*y, width*2, height);
-      else if(direction == 's')
-        ctx.drawImage(selectedImg, base*x - width/2, yOffset + base*(y-1), width*2, height);
-      else if(direction == 'e')
-        ctx.drawImage(selectedImg, base*(x-1), yOffset + base*y - height/2, width, height*2);
-      else
-        ctx.drawImage(selectedImg, base*x, yOffset + base*y - height/2, width, height*2);
-    }
-
     let { player, computers } = this.engine.getState();
-    // console.log(player.loc);
-    renderPlayer(player, 'player');
-    computers.forEach((c) => renderPlayer(c, 'computer'));
-    if(!isWeb) ctx.flush();
+    this.setState({ player, computers });
   }
 
   addController(controller) {
     this.engine.addController(controller);
   }
 
-  render() {
+  renderPlayer(player, color, i) {
+    if(!player.loc) return;
 
-    let { height, width } = Dimensions.get('window');
+    let screen = Dimensions.get('window'),
+        size = Math.min(screen.height, screen.width),
+        scale = size / 2000;
+
+    let { x, y, direction } = player.loc,
+        base = 100 * scale,
+        height = base,
+        width = base;
+
+    if(['n', 's'].includes(direction))
+      height *= 2;
+    else
+      width *= 2;
+
+    let selectedImg = this.images[color][direction];
+
+    let loc = [];
+    if(direction == 'n')
+      loc = [base*x, base*y];
+    else if(direction == 's')
+      loc = [base*x, base*(y-1)];
+    else if(direction == 'e')
+      loc = [base*(x-1), base*y];
+    else
+      loc = [base*x, base*y];
+
+    return(
+      <Image
+        style={{
+          position: 'absolute',
+          width,
+          height,
+          left: loc[0],
+          top: loc[1]
+        }}
+        source={selectedImg}
+        resizeMode='stretch'
+        key={i}
+      />
+    );
+  }
+
+  render() {
+    let { height, width } = Dimensions.get('window'),
+        size = Math.min(height, width),
+        scale = size / 2000;
+
+    let { player, computers } = this.state;
+
+    let yOffset = 0,
+        xOffset = 0;
+    if(player.loc){
+      yOffset = (1000 - (player.loc.y * 100)) * scale;
+      xOffset = width/4 + (1000 - (player.loc.x * 100)) * scale;
+      let { direction } = player.loc;
+
+      if(direction == 'n')
+        yOffset -= 50 * scale;
+      else if(direction == 's')
+        yOffset += 50 * scale;
+      else if(direction == 'e')
+        xOffset += 50 * scale;
+      else
+        xOffset -= 50 * scale;
+    }
+
 
     return(
       <Controller onLoad={this.addController.bind(this)}>
 
-        <Img
-          style={{
+        <View style={{
+            height: size,
+            width: size,
             position: 'absolute',
-            height,
-            width
-          }}
-          resizeMode='contain'
-          source={require('../levels/01/background.png')}
-        />
+            top: yOffset,
+            left: xOffset
+          }}>
 
-        {isWeb ? (
-          <canvas style={{
-            flex: 1
-          }} ref={(canvas) => this.onCreateContext(canvas)}/>
-        ) : (
-          <GLView
-            style={{ flex: 1 }}
-            onContextCreate={(context) => this.onCreateContext(context)}
+          <Image
+            style={{
+              position: 'absolute',
+              height: '100%',
+              width: '100%',
+            }}
+            resizeMode='stretch'
+            source={require('../levels/01/background.png')}
           />
-        )}
 
-        <Img
-          style={{
-            position: 'absolute',
-            height,
-            width
-          }}
-          resizeMode='contain'
-          source={require('../levels/01/overlay.png')}
-        />
+          {computers.map((p, i) => this.renderPlayer(p, 'white', i))}
+
+          {this.renderPlayer(player, 'red')}
+
+          <Image
+            style={{
+              position: 'absolute',
+              height: '100%',
+              width: '100%'
+            }}
+            resizeMode='stretch'
+            source={require('../levels/01/overlay.png')}
+          />
+
+        </View>
 
       </Controller>
     );
